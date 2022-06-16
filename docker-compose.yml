@@ -1,0 +1,153 @@
+version: '3'
+
+services:
+    nginx:
+        build: ./services/nginx
+        container_name: calliope-nginx
+        ports:
+            - 7001:80
+            - 8002:443
+        volumes: 
+            - "./services/nginx/certs:/etc/nginx/certs"
+        depends_on: 
+            - webapi
+            - activityserver
+            - fileserver
+            - storyengine
+        networks:
+            - api
+
+    webapi:
+        build: ./services/webapi
+        container_name: calliope-webapi
+        depends_on:
+            - mysql
+            - elasticsearch
+            - redis
+        command: npm run start
+        ports:
+            - 7003:7003
+        networks:
+            - api
+
+    mysql:
+        build: ./services/mysql
+        container_name: calliope-mysql
+        restart: always
+        ports:
+            - 6000:3306
+        environment:
+            MYSQL_ROOT_PASSWORD: password
+            MYSQL_DATABASE: calliope
+            MYSQL_USER: password
+            MYSQL_PASSWORD: password
+        volumes:
+            - "./volumes/mysql:/var/lib/mysql"
+        networks:
+            - api
+            - searchsync
+
+    elasticsearch:
+        build: ./services/elasticsearch
+        container_name: calliope-elasticsearch
+        environment:
+            discovery.type: single-node
+        ports:
+            - 6002:9200
+            - 6003:9300
+        networks:
+            - api
+            - searchsync
+    
+    kibana:
+        build: ./services/kibana 
+        container_name: calliope-kibana
+        restart: always
+        depends_on:
+            - elasticsearch
+        environment:
+            ELASTICSEARCH_URL: "elasticsearch:9200"
+        ports:
+            - 6004:5601
+        networks:
+            - searchsync
+
+    logstash:
+        build: ./services/logstash
+        container_name: calliope-logstash
+        ports:
+            - 6005:9600
+            - 6006:5044
+        networks:
+            - searchsync
+
+    redis:
+        build: ./services/redis
+        container_name: calliope-redis
+        command: redis-server --requirepass tongji
+        restart: always
+        ports:
+            - 6001:6379
+        networks:
+            - api
+
+    mongodb:
+        build: ./services/mongo
+        container_name: calliope-mongo
+        restart: always
+        ports:
+            - 6007:27017
+        volumes:
+            - "./volumes/mongo:/data/db"
+        command: 
+            ["--bind_ip_all"]
+        environment:
+            MONGO_INITDB_DATABASE: calliope
+            MONGO_INITDB_ROOT_USERNAME: password
+            MONGO_INITDB_ROOT_PASSWORD: password
+        networks:
+            - activity
+
+    activityserver:
+        build: ./services/activity
+        container_name: calliope-activityserver
+        depends_on: 
+            - mongodb
+        command: npm run start
+        ports:
+            - 7002:7002
+        networks:
+            - activity
+            - api
+
+    fileserver:
+        build: ./services/fileserver
+        container_name: calliope-fileserver
+        ports:
+            - 6008:6008
+        volumes:
+            - "./volumes/data:/server/csvs"
+        command: gunicorn -c gunicorn.py run:app
+        networks:
+            - algorithm
+            - api
+
+    storyengine:
+        build: ./services/storyengine
+        container_name: calliope-storyengine
+        command: gunicorn -c gunicorn.py run:app
+        ports:
+            - 6010:6010
+        networks:
+            - algorithm
+            - api
+
+networks:
+    api:
+        driver: bridge
+    activity:
+        driver: bridge
+    algorithm:
+        driver: bridge
+    searchsync:
+        driver: bridge
